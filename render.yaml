@@ -1,22 +1,10 @@
 services:
-  # PostgreSQL Database (using Render's managed PostgreSQL)
-  - type: web
+  # PostgreSQL Database (Render's managed PostgreSQL)
+  - type: postgres
     name: talentnation-db
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile.db
-    envVars:
-      - key: POSTGRES_USER
-        value: talentnation
-      - key: POSTGRES_PASSWORD
-        generateValue: true
-      - key: POSTGRES_DB
-        value: talentnation
-      - key: PGDATA
-        value: /var/lib/postgresql/data/pgdata
-    disk:
-      name: postgres-data
-      mountPath: /var/lib/postgresql/data
-      sizeGB: 10
+    ipAllowList: []
+    plan: free
+    postgresMajorVersion: 15
 
   # Backend API
   - type: web
@@ -29,16 +17,15 @@ services:
       - key: PORT
         value: 10000
       - key: DATABASE_URL
-        fromService:
+        fromDatabase:
           name: talentnation-db
-          type: web
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 7d
       - key: FRONTEND_URL
-        value: https://talentnation-web.onrender.com
+        value: https://alentnation.onrender.com
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_PUBLISHABLE_KEY
@@ -71,7 +58,7 @@ services:
     staticPublishPath: ./web/dist
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://talentnation-api.onrender.com
+        value: https://alentnation-api.onrender.com
 
 # Environment variable groups
 envVarGroups:
