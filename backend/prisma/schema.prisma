@@ -1,0 +1,565 @@
+// This is your Prisma schema file for production (PostgreSQL)
+// For local development, SQLite is used via environment variable
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum UserRole {
+  TALENT
+  CLIENT
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum ProjectStatus {
+  DRAFT
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum PaymentStatus {
+  PENDING
+  HELD_IN_ESCROW
+  RELEASED
+  REFUNDED
+  FAILED
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  SUBMITTED
+  APPROVED
+  REVISION_REQUESTED
+}
+
+enum NotificationType {
+  PROJECT_INVITE
+  PROPOSAL_RECEIVED
+  PROPOSAL_ACCEPTED
+  MILESTONE_DUE
+  PAYMENT_RECEIVED
+  MESSAGE_RECEIVED
+  REVIEW_RECEIVED
+}
+
+// ============================================
+// CORE TABLES
+// ============================================
+
+model User {
+  id            String     @id @default(uuid())
+  email         String     @unique
+  passwordHash  String?    @map("password_hash")
+  phone         String?
+  role          UserRole   @default(TALENT)
+  status        UserStatus @default(PENDING_VERIFICATION)
+  
+  // Profile
+  firstName     String     @map("first_name")
+  lastName      String     @map("last_name")
+  avatarUrl     String?    @map("avatar_url")
+  bio           String?
+  location      String?    // City/Region
+  country       String     @default("SA") // Saudi Arabia default
+  timezone      String     @default("Asia/Riyadh")
+  
+  // Verification
+  emailVerified Boolean    @default(false) @map("email_verified")
+  phoneVerified Boolean    @default(false) @map("phone_verified")
+  identityVerified Boolean @default(false) @map("identity_verified")
+  
+  // Preferences
+  language      String     @default("en") // en or ar
+  currency      String     @default("SAR")
+  
+  // Metadata
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  lastLoginAt   DateTime?  @map("last_login_at")
+
+  // Relations
+  talentProfile TalentProfile?
+  clientProfile ClientProfile?
+  projects      Project[]      @relation("ClientProjects")
+  proposals     Proposal[]
+  contracts     Contract[]     @relation("TalentContracts")
+  clientContracts Contract[]   @relation("ClientContracts")
+  messages      Message[]
+  reviewsGiven  Review[]       @relation("Reviewer")
+  reviewsReceived Review[]     @relation("Reviewee")
+  notifications Notification[]
+  skills        UserSkill[]
+  portfolios    PortfolioItem[]
+  
+  @@index([email])
+  @@index([role, status])
+  @@map("users")
+}
+
+model TalentProfile {
+  id                String   @id @default(uuid())
+  userId            String   @unique @map("user_id")
+  
+  // Professional Info
+  title             String?  // e.g., "Senior UI Designer"
+  headline          String?  // Short tagline
+  yearsExperience   Int      @default(0) @map("years_experience")
+  hourlyRate        Decimal? @map("hourly_rate") @db.Decimal(10, 2)
+  availability      String   @default("FULL_TIME") // FULL_TIME, PART_TIME, CONTRACT
+  
+  // Work Preferences
+  workTypes         String[] @default([]) @map("work_types") // REMOTE, ONSITE, HYBRID
+  preferredProjectDuration String? @map("preferred_project_duration")
+  
+  // Stats
+  totalEarnings     Decimal  @default(0) @map("total_earnings") @db.Decimal(12, 2)
+  completedProjects Int      @default(0) @map("completed_projects")
+  rating            Float    @default(0)
+  reviewCount       Int      @default(0) @map("review_count")
+  
+  // Settings
+  isAvailable       Boolean  @default(true) @map("is_available")
+  isPublic          Boolean  @default(true) @map("is_public")
+  
+  // Relations
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("talent_profiles")
+}
+
+model ClientProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  
+  // Company Info
+  companyName     String?  @map("company_name")
+  companySize     String?  @map("company_size") // 1-10, 11-50, etc.
+  industry        String?
+  website         String?
+  logoUrl         String?  @map("logo_url")
+  
+  // Stats
+  totalSpent      Decimal  @default(0) @map("total_spent") @db.Decimal(12, 2)
+  projectsPosted  Int      @default(0) @map("projects_posted")
+  projectsCompleted Int    @default(0) @map("projects_completed")
+  
+  // Verification
+  isVerifiedCompany Boolean @default(false) @map("is_verified_company")
+  
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("client_profiles")
+}
+
+// ============================================
+// SKILLS & CATEGORIES
+// ============================================
+
+model Skill {
+  id          String      @id @default(uuid())
+  nameEn      String      @map("name_en")
+  nameAr      String?     @map("name_ar")
+  slug        String      @unique
+  categoryId  String      @map("category_id")
+  
+  createdAt   DateTime    @default(now()) @map("created_at")
+  
+  // Relations
+  category    Category    @relation(fields: [categoryId], references: [id])
+  userSkills  UserSkill[]
+  
+  @@map("skills")
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  nameEn      String    @map("name_en")
+  nameAr      String?   @map("name_ar")
+  slug        String    @unique
+  iconUrl     String?   @map("icon_url")
+  sortOrder   Int       @default(0) @map("sort_order")
+  
+  // Relations
+  skills      Skill[]
+  projects    Project[]
+  
+  @@map("categories")
+}
+
+model UserSkill {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  skillId     String   @map("skill_id")
+  proficiency Int      @default(1) // 1-5 scale
+  yearsExp    Int      @default(0) @map("years_exp")
+  
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill       Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, skillId])
+  @@map("user_skills")
+}
+
+// ============================================
+// PROJECTS & PROPOSALS
+// ============================================
+
+model Project {
+  id              String        @id @default(uuid())
+  clientId        String        @map("client_id")
+  title           String
+  description     String
+  
+  // Categorization
+  categoryId      String        @map("category_id")
+  skillsRequired  String[]      @map("skills_required") // Array of skill IDs
+  
+  // Project Details
+  projectType     String        @default("FIXED") @map("project_type") // FIXED, HOURLY, RETAINER
+  budgetMin       Decimal?      @map("budget_min") @db.Decimal(10, 2)
+  budgetMax       Decimal?      @map("budget_max") @db.Decimal(10, 2)
+  currency        String        @default("SAR")
+  
+  // Location & Work
+  workLocation    String        @default("REMOTE") @map("work_location") // REMOTE, ONSITE, HYBRID
+  locationCity    String?       @map("location_city")
+  
+  // Timeline
+  duration        String?       // e.g., "1-3 months"
+  deadline        DateTime?
+  startDate       DateTime?     @map("start_date")
+  
+  // Status
+  status          ProjectStatus @default(DRAFT)
+  visibility      String        @default("PUBLIC") // PUBLIC, PRIVATE, INVITE_ONLY
+  
+  // Metadata
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  publishedAt     DateTime?     @map("published_at")
+  
+  // Relations
+  client          User          @relation("ClientProjects", fields: [clientId], references: [id])
+  category        Category      @relation(fields: [categoryId], references: [id])
+  proposals       Proposal[]
+  contract        Contract?
+  attachments     Attachment[]
+  
+  @@index([clientId, status])
+  @@index([categoryId, status])
+  @@index([status, createdAt])
+  @@map("projects")
+}
+
+model Proposal {
+  id              String          @id @default(uuid())
+  projectId       String          @map("project_id")
+  talentId        String          @map("talent_id")
+  
+  // Proposal Details
+  coverLetter     String          @map("cover_letter")
+  proposedBudget  Decimal         @map("proposed_budget") @db.Decimal(10, 2)
+  proposedDuration String?        @map("proposed_duration")
+  
+  // Status
+  status          ProposalStatus  @default(PENDING)
+  
+  // Metadata
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  
+  // Relations
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  talent          User            @relation(fields: [talentId], references: [id], onDelete: Cascade)
+  
+  @@unique([projectId, talentId])
+  @@index([talentId, status])
+  @@map("proposals")
+}
+
+// ============================================
+// CONTRACTS & PAYMENTS
+// ============================================
+
+model Contract {
+  id              String   @id @default(uuid())
+  projectId       String   @unique @map("project_id")
+  clientId        String   @map("client_id")
+  talentId        String   @map("talent_id")
+  proposalId      String?  @map("proposal_id")
+  
+  // Contract Terms
+  agreedBudget    Decimal  @map("agreed_budget") @db.Decimal(10, 2)
+  currency        String   @default("SAR")
+  startDate       DateTime @map("start_date")
+  endDate         DateTime? @map("end_date")
+  
+  // Status
+  status          String   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED
+  
+  // Metadata
+  createdAt       DateTime @default(now()) @map("created_at")
+  completedAt     DateTime? @map("completed_at")
+  
+  // Relations
+  project         Project  @relation(fields: [projectId], references: [id])
+  client          User     @relation("ClientContracts", fields: [clientId], references: [id])
+  talent          User     @relation("TalentContracts", fields: [talentId], references: [id])
+  milestones      Milestone[]
+  payments        Payment[]
+  
+  @@map("contracts")
+}
+
+model Milestone {
+  id              String          @id @default(uuid())
+  contractId      String          @map("contract_id")
+  
+  // Details
+  title           String
+  description     String?
+  amount          Decimal         @db.Decimal(10, 2)
+  dueDate         DateTime?       @map("due_date")
+  
+  // Status
+  status          MilestoneStatus @default(PENDING)
+  
+  // Deliverables
+  deliverables    String[]        // Array of file URLs
+  submittedAt     DateTime?       @map("submitted_at")
+  approvedAt      DateTime?       @map("approved_at")
+  
+  // Relations
+  contract        Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  
+  @@map("milestones")
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  contractId      String        @map("contract_id")
+  milestoneId     String?       @map("milestone_id")
+  
+  // Amount
+  amount          Decimal       @db.Decimal(10, 2)
+  platformFee     Decimal       @map("platform_fee") @db.Decimal(10, 2)
+  totalAmount     Decimal       @map("total_amount") @db.Decimal(10, 2)
+  currency        String        @default("SAR")
+  
+  // Payment Details
+  paymentMethod   String        @map("payment_method") // card, bank_transfer, mada, stc_pay
+  paymentIntentId String?       @map("payment_intent_id") // Stripe/Hyperpay reference
+  
+  // Status
+  status          PaymentStatus @default(PENDING)
+  
+  // Metadata
+  paidAt          DateTime?     @map("paid_at")
+  releasedAt      DateTime?     @map("released_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  
+  // Relations
+  contract        Contract      @relation(fields: [contractId], references: [id])
+  
+  @@map("payments")
+}
+
+// ============================================
+// MESSAGING & COMMUNICATION
+// ============================================
+
+model Conversation {
+  id          String    @id @default(uuid())
+  projectId   String?   @map("project_id")
+  
+  // Participants stored as JSON or separate table for scalability
+  participantIds String[] @map("participant_ids")
+  
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  messages    Message[]
+  
+  @@map("conversations")
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  conversationId  String   @map("conversation_id")
+  senderId        String   @map("sender_id")
+  
+  content         String
+  attachments     String[] // File URLs
+  
+  // Metadata
+  readAt          DateTime? @map("read_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  
+  // Relations
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender          User         @relation(fields: [senderId], references: [id])
+  
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// ============================================
+// REVIEWS & RATINGS
+// ============================================
+
+model Review {
+  id          String   @id @default(uuid())
+  contractId  String   @unique @map("contract_id")
+  reviewerId  String   @map("reviewer_id")
+  revieweeId  String   @map("reviewee_id")
+  
+  // Ratings (1-5)
+  overall     Int
+  communication Int?
+  quality     Int?
+  timeliness  Int?
+  professionalism Int?
+  
+  // Review
+  title       String?
+  content     String
+  
+  // Metadata
+  isPublic    Boolean  @default(true) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  reviewer    User     @relation("Reviewer", fields: [reviewerId], references: [id])
+  reviewee    User     @relation("Reviewee", fields: [revieweeId], references: [id])
+  
+  @@map("reviews")
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String           @map("user_id")
+  
+  type        NotificationType
+  title       String
+  body        String
+  data        Json?            // Additional payload
+  
+  // Status
+  read        Boolean          @default(false)
+  readAt      DateTime?        @map("read_at")
+  
+  createdAt   DateTime         @default(now()) @map("created_at")
+  
+  // Relations
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+// ============================================
+// PORTFOLIO & ATTACHMENTS
+// ============================================
+
+model PortfolioItem {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  
+  title       String
+  description String?
+  thumbnailUrl String  @map("thumbnail_url")
+  projectUrl  String? @map("project_url")
+  attachments String[] // Array of file URLs
+  
+  skills      String[] // Skill IDs
+  
+  isPublic    Boolean @default(true) @map("is_public")
+  sortOrder   Int     @default(0) @map("sort_order")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("portfolio_items")
+}
+
+model Attachment {
+  id          String   @id @default(uuid())
+  projectId   String   @map("project_id")
+  
+  filename    String
+  url         String
+  mimeType    String   @map("mime_type")
+  size        Int      // bytes
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@map("attachments")
+}
+
+// ============================================
+// ADMIN & CONFIGURATION
+// ============================================
+
+model PlatformConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       Json
+  
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@map("platform_config")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?  @map("user_id")
+  action      String   // e.g., "PROJECT_CREATED", "PAYMENT_RELEASED"
+  entityType  String   @map("entity_type") // e.g., "project", "contract"
+  entityId    String   @map("entity_id")
+  metadata    Json?
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
