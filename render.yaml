@@ -1,11 +1,13 @@
-services:
+databases:
   # PostgreSQL Database (Render's managed PostgreSQL)
-  - type: postgres
-    name: talentnation-db
-    ipAllowList: []
+  - name: talentnation-db
+    databaseName: talentnation
+    user: talentnation
     plan: free
-    postgresMajorVersion: 15
+    postgresMajorVersion: "15"
+    ipAllowList: []
 
+services:
   # Backend API
   - type: web
     name: talentnation-api
