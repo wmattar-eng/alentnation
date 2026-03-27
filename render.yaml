@@ -1,5 +1,4 @@
 databases:
-  # PostgreSQL Database (Render's managed PostgreSQL)
   - name: talentnation-db
     databaseName: talentnation
     user: talentnation
@@ -8,10 +7,10 @@ databases:
     ipAllowList: []
 
 services:
-  # Backend API
   - type: web
     name: talentnation-api
     runtime: docker
+    plan: free
     dockerfilePath: ./backend/Dockerfile
     envVars:
       - key: NODE_ENV
@@ -32,39 +31,13 @@ services:
         sync: false
       - key: STRIPE_PUBLISHABLE_KEY
         sync: false
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false
-      - key: HYPERPAY_ENTITY_ID
-        sync: false
-      - key: HYPERPAY_ACCESS_TOKEN
-        sync: false
-      - key: HYPERPAY_BASE_URL
-        value: https://test.oppwa.com
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
-        sync: false
-      - key: REDIS_URL
-        sync: false
     healthCheckPath: /health
 
-  # Web Frontend (Static Site)
   - type: web
-    name: talentnation-web
+    name: alentation
     runtime: static
     buildCommand: cd web && npm install && npm run build
     staticPublishPath: ./web/dist
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: https://alentnation-api.onrender.com
-
-# Environment variable groups
-envVarGroups:
-  - name: talentnation-secrets
-    envVars:
-      - key: JWT_SECRET
-        generateValue: true
